@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import chromadb
-import pytest
+import uuid
 
 from src.agent.memory import BaseMemory, ChromaDBMemory
 from src.agent.schemas import MemoryChunk
@@ -14,7 +14,7 @@ from src.agent.schemas import MemoryChunk
 def make_memory() -> ChromaDBMemory:
     """Return a ChromaDBMemory backed by an in-memory ephemeral client."""
     client = chromadb.EphemeralClient()
-    collection = client.get_or_create_collection("test_collection")
+    collection = client.get_or_create_collection(f"test_{uuid.uuid4().hex}")
     mem = ChromaDBMemory.__new__(ChromaDBMemory)
     mem._client = client
     mem._collection = collection
