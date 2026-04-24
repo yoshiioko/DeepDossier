@@ -33,5 +33,5 @@ class SubgraphState(TypedDict):
     """
 
     sub_query: SubQuery
-    raw_content: str          # populated by fetch_node
-    sub_result: SubResult | None   # populated by synthesize_node
+    raw_content: str                                           # populated by fetch_node
+    sub_results: Annotated[list[SubResult], operator.add]      # populated by synthesize_node; matches supervisor reducer
