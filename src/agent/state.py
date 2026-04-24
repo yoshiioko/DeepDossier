@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+import operator
+from typing import Annotated, TypedDict
 
 from langgraph.graph import MessagesState
 
@@ -17,8 +18,8 @@ class SupervisorState(MessagesState):
     """
 
     user_query: str
-    sub_queries: list[SubQuery]      # populated by planner_node
-    sub_results: list[SubResult]     # collected from ResearcherSubgraph × N
+    sub_queries: list[SubQuery]                            # populated by planner_node
+    sub_results: Annotated[list[SubResult], operator.add]  # append reducer — required for Send fan-out
     human_approved: bool             # HITL gate; default False
     dossier_output: dict | None      # DossierOutput.model_dump() — never the Pydantic obj
     run_id: str                      # UUID string bound to every log event
