@@ -45,7 +45,8 @@ def synthesize_node(state: SubgraphState, settings: Settings) -> dict:
     sub_result: SubResult = result.output
 
     log.info("synthesize_node.done", confidence=sub_result.confidence)
-    return {"sub_result": sub_result}
+    # Return as a list so the operator.add reducer in SupervisorState appends it correctly
+    return {"sub_results": [sub_result]}
 
 
 def build_researcher_subgraph(settings: Settings):
