@@ -14,8 +14,8 @@ User Query → planner_node → dispatcher_node → [ResearcherSubgraph × N] (p
 
 - **Supervisor graph** (`src/agent/graph.py`): orchestrates all nodes; uses `SqliteSaver` for persistence across restarts.
 - **ResearcherSubgraph** (`src/agent/subgraph.py`): child graph with `fetch_node` + `synthesize_node`, spawned in parallel via LangGraph's `Send` API — not `asyncio.gather`.
-- **Two LLM paths**: LangChain (`ChatGoogleGenerativeAI`) for graph nodes; Pydantic AI (`GeminiModel`) for `agents.py` agents. Never mix both in the same node.
-- **Instructor** wraps the Gemini client only in `planner_node` for `PlannerOutput` structured output with auto-retry on `ValidationError`.
+- **Two LLM paths**: Instructor + `google.generativeai` (`GenerativeModel`) in `planner_node` only; Pydantic AI (`google-gla` model string) for `synthesize_agent` and `compiler_agent` in `agents.py`. Never mix both in the same node.
+- **Instructor** wraps `google.generativeai.GenerativeModel` in `planner_node` for `PlannerOutput` structured output with auto-retry on `ValidationError` (`max_retries=3`, `Mode.GEMINI_JSON`).
 - **ChromaDB** (`src/agent/memory.py`): all calls wrapped in `asyncio.to_thread()`. Backed by `BaseMemory` protocol — swap to `Mem0Memory` without changing callers.
 
 ## Key Files
@@ -71,7 +71,7 @@ docker compose up --build                        # containerised run (Phase 7)
 Copy `.env.example` → `.env`. Required keys:
 
 ```env
-GOOGLE_API_KEY=...          # Gemini (both LangChain and Pydantic AI paths)
+GOOGLE_API_KEY=...          # Gemini (both Instructor/google.generativeai and Pydantic AI paths)
 TAVILY_API_KEY=...
 LANGSMITH_API_KEY=...
 LANGSMITH_PROJECT=deep-dossier
@@ -79,4 +79,6 @@ LANGSMITH_TRACING=true
 ```
 
 Notable optional overrides: `PLANNER_MODEL_NAME=gemini-2.5-pro` (stronger model for planning), `CHROMA_PATH=./chroma_db`, `MAX_PARALLEL_RESEARCHERS=5`.
+
+> **Dependency note**: use `pydantic-ai-slim[google,openai,logfire]` — **not** `pydantic-ai[gemini]` (that extra doesn't exist and installs all provider extras including `mistralai 2.x`, which conflicts with `instructor`). The slim package gives you only the Google Gemini path with no Mistral dependency.
 

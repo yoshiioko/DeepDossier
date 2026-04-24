@@ -132,8 +132,8 @@ main.py                   # CLI entrypoint
 
 ## Architecture Notes
 
-- **Two LLM paths**: LangChain (`ChatGoogleGenerativeAI`) for graph nodes;
-  Pydantic AI (`GeminiModel`) for `agents.py` singletons. Never mixed in the same node.
+- **Two LLM paths**: Instructor + `google.generativeai` (`GenerativeModel`) in `planner_node` only;
+  Pydantic AI (`google-gla` model string) for `synthesize_agent` and `compiler_agent` in `agents.py`. Never mixed in the same node.
 - **Parallel dispatch** uses LangGraph's `Send` API in `dispatcher_node` — not
   `asyncio.gather`. Each `ResearcherSubgraph` instance is a fully isolated child graph.
 - **Structured output**: `planner_node` uses Instructor (`instructor.from_gemini`) for
