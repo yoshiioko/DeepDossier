@@ -84,13 +84,13 @@ def check_subgraph() -> None:
             initial_state = {
                 "sub_query": sq,
                 "raw_content": "",
-                "sub_result": None,
+                "sub_results": [],
             }
             final_state = subgraph.invoke(initial_state)
 
-        assert final_state["sub_result"] is not None
-        assert isinstance(final_state["sub_result"], SubResult)
-        ok(f"Full subgraph returned SubResult with confidence={final_state['sub_result'].confidence}")
+        assert len(final_state["sub_results"]) > 0
+        assert isinstance(final_state["sub_results"][0], SubResult)
+        ok(f"Full subgraph returned SubResult with confidence={final_state['sub_results'][0].confidence}")
     except Exception as e:
         fail(f"Subgraph run failed: {e}")
 
