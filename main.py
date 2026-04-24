@@ -1,5 +1,10 @@
 """DeepDossier CLI entrypoint."""
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # ensures GOOGLE_API_KEY is in os.environ for Pydantic AI
+
 from src.agent.config import Settings
 from src.agent.graph import build_supervisor_graph
 from src.agent.memory import ChromaDBMemory
