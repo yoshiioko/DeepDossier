@@ -64,3 +64,34 @@ research findings into a comprehensive, well-structured dossier.
 - Write final_markdown as a complete Markdown document rendering all sections.
 - Be honest about gaps — do not fabricate information.
 """
+
+
+def build_planner_prompt(query: str, known_topics: list[str], max_sub_queries: int = 5) -> str:
+    """Build the prompt for planner_node (Instructor + Gemini).
+
+    The LLM must return a PlannerOutput with at least one SubQuery.
+    """
+    known_section = (
+        "The following topics are already in memory — do NOT create sub-queries for them:\n"
+        + "\n".join(f"- {t}" for t in known_topics)
+        if known_topics
+        else "No topics are in memory yet — research everything relevant."
+    )
+
+    return (
+        "You are a research planning agent. Decompose the following query into "
+        "specific, focused sub-research tasks.\n\n"
+        f"## User Query\n{query}\n\n"
+        f"## Memory Status\n{known_section}\n\n"
+        "## Instructions\n"
+        f"- Create between 1 and {max_sub_queries} sub-queries.\n"
+        "- Each sub-query must have:\n"
+        "    - topic: a specific, focused research topic (not the full query)\n"
+        '    - tool_hint: exactly one of "web", "wiki", or "paper"\n'
+        '        - "web"   → breaking news, company info, current events (Tavily)\n'
+        '        - "wiki"  → background concepts, history, definitions (Wikipedia)\n'
+        '        - "paper" → academic research, technical depth (ArXiv)\n'
+        "    - rationale: why this sub-topic matters to answering the overall query\n"
+        "- Do NOT include sub-queries for known topics listed above.\n"
+        "- planning_notes: briefly explain your decomposition strategy.\n"
+    )
