@@ -25,7 +25,6 @@ def build_supervisor_graph(settings: Settings, memory: BaseMemory):
 
     # ── Register nodes ────────────────────────────────────────────────────────
     builder.add_node("planner",       lambda s: planner_node(s, settings, memory))
-    builder.add_node("dispatcher",    lambda s: dispatcher_node(s, settings))
     builder.add_node("researcher",    build_researcher_subgraph(settings))
     builder.add_node("aggregator",    lambda s: aggregator_node(s, settings))
     builder.add_node("memory_writer", lambda s: memory_writer_node(s, settings, memory))
@@ -33,14 +32,16 @@ def build_supervisor_graph(settings: Settings, memory: BaseMemory):
 
     # ── Wire edges ────────────────────────────────────────────────────────────
     builder.add_edge(START,           "planner")
-    builder.add_edge("planner",       "dispatcher")
-    builder.add_conditional_edges("dispatcher", lambda s: "researcher", ["researcher"])
+    # dispatcher_node returns list[Send] — use it as the routing function directly
+    builder.add_conditional_edges("planner", lambda s: dispatcher_node(s, settings), ["researcher"])
     builder.add_edge("researcher",    "aggregator")
     builder.add_edge("aggregator",    "memory_writer")
     builder.add_edge("memory_writer", "compiler")
     builder.add_edge("compiler",      END)
 
     # ── Checkpointer ──────────────────────────────────────────────────────────
-    checkpointer = SqliteSaver.from_conn_string("./graph_state.db")
+    import sqlite3
+    conn = sqlite3.connect("./graph_state.db", check_same_thread=False)
+    checkpointer = SqliteSaver(conn)
 
     return builder.compile(checkpointer=checkpointer)
