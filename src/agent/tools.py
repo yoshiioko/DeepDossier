@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import arxiv
+import wikipedia as wiki_lib
 from tavily import TavilyClient
-from langchain_community.utilities import WikipediaAPIWrapper, ArxivAPIWrapper
 
 from src.agent.config import Settings
 
@@ -26,18 +27,40 @@ def web_search(query: str, settings: Settings, max_results: int = 5) -> str:
 
 
 def wikipedia_search(query: str, max_results: int = 3) -> str:
-    """Search Wikipedia. Returns article text or an error string."""
+    """Search Wikipedia. Returns article summaries with source URLs."""
     try:
-        wrapper = WikipediaAPIWrapper(top_k_results=max_results)
-        return wrapper.run(query)
+        titles = wiki_lib.search(query, results=max_results)
+        if not titles:
+            return "[wikipedia_search: no results]"
+        formatted = []
+        for title in titles[:max_results]:
+            try:
+                page = wiki_lib.page(title, auto_suggest=False)
+                formatted.append(
+                    f"## {page.title}\n"
+                    f"URL: {page.url}\n"
+                    f"{page.summary}"
+                )
+            except Exception:
+                continue
+        return "\n\n".join(formatted) or "[wikipedia_search: no results]"
     except Exception as e:
         return f"[wikipedia_search error: {e}]"
 
 
 def arxiv_search(query: str, max_results: int = 3) -> str:
-    """Search ArXiv for papers. Returns paper summaries or an error string."""
+    """Search ArXiv for papers. Returns paper summaries with source URLs."""
     try:
-        wrapper = ArxivAPIWrapper(top_k_results=max_results)
-        return wrapper.run(query)
+        client = arxiv.Client()
+        search = arxiv.Search(query=query, max_results=max_results)
+        formatted = []
+        for paper in client.results(search):
+            formatted.append(
+                f"## {paper.title}\n"
+                f"URL: {paper.entry_id}\n"
+                f"Authors: {', '.join(str(a) for a in paper.authors[:3])}\n"
+                f"{paper.summary}"
+            )
+        return "\n\n".join(formatted) or "[arxiv_search: no results]"
     except Exception as e:
         return f"[arxiv_search error: {e}]"

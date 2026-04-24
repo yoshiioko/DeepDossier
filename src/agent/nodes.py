@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-import google.generativeai as genai
 import instructor
 import structlog
+import google.generativeai as genai
 from langgraph.types import Send
 
 from src.agent.agents import compiler_agent
@@ -36,14 +36,15 @@ def planner_node(state: SupervisorState, settings: Settings, memory: BaseMemory)
         max_sub_queries=settings.max_parallel_researchers,
     )
 
-    # 3. Call Instructor-patched Gemini
+    # 3. Call Gemini via Instructor for structured output with auto-retry on ValidationError
+    genai.configure(api_key=settings.google_api_key)
     client = instructor.from_gemini(
         client=genai.GenerativeModel(model_name=settings.planner_model_name),
         mode=instructor.Mode.GEMINI_JSON,
     )
     result: PlannerOutput = client.chat.completions.create(
         response_model=PlannerOutput,
-        messages=[{"role": "user", "content": prompt}],  # type: ignore[arg-type]
+        messages=[{"role": "user", "content": prompt}],
         max_retries=3,
     )
 
@@ -65,7 +66,7 @@ def dispatcher_node(state: SupervisorState, settings: Settings) -> list[Send]:
             {
                 "sub_query": sq,
                 "raw_content": "",
-                "sub_result": None,
+                "sub_results": [],
             },
         )
         for sq in state["sub_queries"]
