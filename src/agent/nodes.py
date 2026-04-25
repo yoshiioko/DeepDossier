@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
+import warnings
 from datetime import datetime, timezone
+
+warnings.filterwarnings(
+    "ignore",
+    category=FutureWarning,
+    module=r"google\.generativeai|instructor",
+)
 
 import instructor
 import structlog
@@ -20,14 +26,23 @@ from src.agent.state import SupervisorState
 logger = structlog.get_logger()
 
 
-def planner_node(state: SupervisorState, settings: Settings, memory: BaseMemory) -> dict:
+async def planner_node(state: SupervisorState, settings: Settings, memory: BaseMemory) -> dict:
     """Decompose the user query into sub-queries using Instructor + Gemini."""
     log = logger.bind(node_name="planner_node", run_id=state.get("run_id", ""))
     log.info("planner_node.start")
 
     # 1. Query ChromaDB for already-known topics
-    known_chunks = asyncio.run(memory.retrieve(state["user_query"], n_results=5))
+    known_chunks = await memory.retrieve(state["user_query"], n_results=5)
     known_topics = [c.metadata.get("topic", "") for c in known_chunks if c.metadata.get("topic")]
+
+    if known_topics:
+        log.info(
+            "planner_node.memory_hit",
+            num_chunks=len(known_chunks),
+            known_topics=known_topics,
+        )
+    else:
+        log.info("planner_node.memory_miss", num_chunks=len(known_chunks))
 
     # 2. Build prompt
     prompt = build_planner_prompt(
@@ -118,7 +133,7 @@ async def _write_memory(
     await memory.write_chunks(chunks)
 
 
-def memory_writer_node(
+async def memory_writer_node(
     state: SupervisorState,
     settings: Settings,
     memory: BaseMemory,
@@ -128,12 +143,10 @@ def memory_writer_node(
     log.info("memory_writer_node.start")
 
     try:
-        asyncio.run(
-            _write_memory(
-                sub_results=state.get("aggregated_results", []),
-                run_id=state.get("run_id", ""),
-                memory=memory,
-            )
+        await _write_memory(
+            sub_results=state.get("aggregated_results", []),
+            run_id=state.get("run_id", ""),
+            memory=memory,
         )
         log.info("memory_writer_node.done", num_chunks=len(state.get("aggregated_results", [])))
     except Exception as e:
@@ -142,7 +155,7 @@ def memory_writer_node(
     return {}
 
 
-def compiler_node(
+async def compiler_node(
     state: SupervisorState,
     settings: Settings,
 ) -> dict:
@@ -155,11 +168,11 @@ def compiler_node(
         sub_results=state.get("aggregated_results", []),
     )
 
-    result = compiler_agent.run_sync(prompt, deps=settings)
+    result = await compiler_agent.run(prompt, deps=settings)
     dossier: DossierOutput = result.output
 
     # Attach run_id — the LLM doesn't know it
-    dossier = DossierOutput(**{**dossier.model_dump(), "run_id": state.get("run_id", "")})
+    dossier = dossier.model_copy(update={"run_id": state.get("run_id", "")})
 
     log.info("compiler_node.done", title=dossier.title)
 
