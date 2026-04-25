@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from langgraph.checkpoint.sqlite import SqliteSaver
+from contextlib import asynccontextmanager
+
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 from src.agent.config import Settings
@@ -18,30 +20,53 @@ from src.agent.state import SupervisorState
 from src.agent.subgraph import build_researcher_subgraph
 
 
-def build_supervisor_graph(settings: Settings, memory: BaseMemory):
-    """Build and compile the full supervisor graph with SqliteSaver checkpointing."""
+def _build_graph(settings: Settings, memory: BaseMemory, checkpointer):
+    """Wire nodes and edges; attach checkpointer.
 
+    Graph topology:
+        START -> planner -> researcher (×N, parallel Send) -> aggregator
+             -> memory_writer -> compiler -> END
+
+    Named adapter functions bridge LangGraph's single-argument call convention
+    (state only) with our node convention (state + settings [+ memory]).
+    """
     builder = StateGraph(SupervisorState)  # type: ignore[arg-type]
 
+    async def planner_adapter(state: SupervisorState) -> dict:
+        return await planner_node(state, settings, memory)
+
+    def dispatcher_adapter(state: SupervisorState):
+        return dispatcher_node(state, settings)
+
+    def aggregator_adapter(state: SupervisorState) -> dict:
+        return aggregator_node(state, settings)
+
+    async def memory_writer_adapter(state: SupervisorState) -> dict:
+        return await memory_writer_node(state, settings, memory)
+
+    async def compiler_adapter(state: SupervisorState) -> dict:
+        return await compiler_node(state, settings)
+
     # ── Register nodes ────────────────────────────────────────────────────────
-    builder.add_node("planner",       lambda s: planner_node(s, settings, memory))
+    builder.add_node("planner",       planner_adapter)       # type: ignore[arg-type]
     builder.add_node("researcher",    build_researcher_subgraph(settings))
-    builder.add_node("aggregator",    lambda s: aggregator_node(s, settings))
-    builder.add_node("memory_writer", lambda s: memory_writer_node(s, settings, memory))
-    builder.add_node("compiler",      lambda s: compiler_node(s, settings))
+    builder.add_node("aggregator",    aggregator_adapter)  # type: ignore[arg-type]
+    builder.add_node("memory_writer", memory_writer_adapter)  # type: ignore[arg-type]
+    builder.add_node("compiler",      compiler_adapter)       # type: ignore[arg-type]
 
     # ── Wire edges ────────────────────────────────────────────────────────────
     builder.add_edge(START,           "planner")
-    # dispatcher_node returns list[Send] — use it as the routing function directly
-    builder.add_conditional_edges("planner", lambda s: dispatcher_node(s, settings), ["researcher"])
+    builder.add_conditional_edges("planner", dispatcher_adapter, ["researcher"])
     builder.add_edge("researcher",    "aggregator")
     builder.add_edge("aggregator",    "memory_writer")
     builder.add_edge("memory_writer", "compiler")
     builder.add_edge("compiler",      END)
 
-    # ── Checkpointer ──────────────────────────────────────────────────────────
-    import sqlite3
-    conn = sqlite3.connect("./graph_state.db", check_same_thread=False)
-    checkpointer = SqliteSaver(conn)
-
     return builder.compile(checkpointer=checkpointer)
+
+
+@asynccontextmanager
+async def build_supervisor_graph(settings: Settings, memory: BaseMemory):
+    """Async context manager — yields a compiled graph backed by AsyncSqliteSaver."""
+    async with AsyncSqliteSaver.from_conn_string("./graph_state.db") as checkpointer:
+        yield _build_graph(settings, memory, checkpointer)
