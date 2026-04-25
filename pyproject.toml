@@ -30,6 +30,7 @@ dependencies = [
     "langgraph-checkpoint-sqlite>=3.0.3",
     "pydantic-ai-slim[google,logfire,openai]>=0.1",
     "instructor>=1.15.1",
+    "aiosqlite>=0.22.1",
 ]
 
 [dependency-groups]

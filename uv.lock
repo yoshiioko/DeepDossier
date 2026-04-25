@@ -635,6 +635,7 @@ name = "deep-dossier"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "aiosqlite" },
     { name = "arxiv" },
     { name = "chromadb" },
     { name = "fastapi" },
@@ -670,6 +671,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "arxiv", specifier = ">=2.1" },
     { name = "chromadb", specifier = ">=0.6" },
     { name = "fastapi", specifier = ">=0.115" },
