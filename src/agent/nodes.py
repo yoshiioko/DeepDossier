@@ -77,7 +77,11 @@ def aggregator_node(
     state: SupervisorState,
     settings: Settings,
 ) -> dict:
-    """Deduplicate sub_results by topic, keeping the highest confidence."""
+    """Deduplicate sub_results by topic, keeping the highest confidence.
+
+    Writes to `aggregated_results` (no reducer) rather than back into
+    `sub_results` (operator.add reducer) to avoid doubling the list.
+    """
     log = logger.bind(node_name="aggregator_node", run_id=state.get("run_id", ""))
     log.info("aggregator_node.start", num_results=len(state.get("sub_results", [])))
 
@@ -90,7 +94,7 @@ def aggregator_node(
     deduplicated = list(seen.values())
     log.info("aggregator_node.done", num_deduplicated=len(deduplicated))
 
-    return {"sub_results": deduplicated}
+    return {"aggregated_results": deduplicated}
 
 
 async def _write_memory(
@@ -126,12 +130,12 @@ def memory_writer_node(
     try:
         asyncio.run(
             _write_memory(
-                sub_results=state.get("sub_results", []),
+                sub_results=state.get("aggregated_results", []),
                 run_id=state.get("run_id", ""),
                 memory=memory,
             )
         )
-        log.info("memory_writer_node.done", num_chunks=len(state.get("sub_results", [])))
+        log.info("memory_writer_node.done", num_chunks=len(state.get("aggregated_results", [])))
     except Exception as e:
         log.warning("memory_writer_node.failed", error=str(e))
 
@@ -148,7 +152,7 @@ def compiler_node(
 
     prompt = build_compiler_prompt(
         query=state["user_query"],
-        sub_results=state.get("sub_results", []),
+        sub_results=state.get("aggregated_results", []),
     )
 
     result = compiler_agent.run_sync(prompt, deps=settings)

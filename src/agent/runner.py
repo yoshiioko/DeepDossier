@@ -30,6 +30,7 @@ def run_once(
         "user_query": query,
         "sub_queries": [],
         "sub_results": [],
+        "aggregated_results": [],
         "human_approved": False,
         "dossier_output": None,
         "run_id": run_id,

@@ -20,6 +20,7 @@ class SupervisorState(MessagesState):
     user_query: str
     sub_queries: list[SubQuery]                            # populated by planner_node
     sub_results: Annotated[list[SubResult], operator.add]  # append reducer — required for Send fan-out
+    aggregated_results: list[SubResult]                    # populated by aggregator_node — plain replace, no reducer
     human_approved: bool             # HITL gate; default False
     dossier_output: dict | None      # DossierOutput.model_dump() — never the Pydantic obj
     run_id: str                      # UUID string bound to every log event
