@@ -67,25 +67,25 @@ def test_fetch_node_returns_dict_with_raw_content(monkeypatch, settings, web_que
 
 # ── synthesize_node ───────────────────────────────────────────────────────────
 
-def test_synthesize_node_returns_sub_result(settings, web_query) -> None:
+async def test_synthesize_node_returns_sub_result(settings, web_query) -> None:
     state: SubgraphState = {
         "sub_query": web_query,
         "raw_content": "AI agents are software systems that perceive and act.",
         "sub_results": [],
     }
     with synthesize_agent.override(model=TestModel()):
-        result = synthesize_node(state, settings)
+        result = await synthesize_node(state, settings)
     assert "sub_results" in result
     assert isinstance(result["sub_results"][0], SubResult)
 
 
 # ── Full subgraph ─────────────────────────────────────────────────────────────
 
-def test_full_subgraph_produces_sub_result(monkeypatch, settings, wiki_query) -> None:
+async def test_full_subgraph_produces_sub_result(monkeypatch, settings, wiki_query) -> None:
     monkeypatch.setattr("src.agent.subgraph.wikipedia_search", lambda q: "Neural networks are...")
     with synthesize_agent.override(model=TestModel()):
         subgraph = build_researcher_subgraph(settings)
-        final = subgraph.invoke({
+        final = await subgraph.ainvoke({
             "sub_query": wiki_query,
             "raw_content": "",
             "sub_results": [],
@@ -94,11 +94,11 @@ def test_full_subgraph_produces_sub_result(monkeypatch, settings, wiki_query) ->
     assert isinstance(final["sub_results"][0], SubResult)
 
 
-def test_full_subgraph_state_has_all_keys(monkeypatch, settings, web_query) -> None:
+async def test_full_subgraph_state_has_all_keys(monkeypatch, settings, web_query) -> None:
     monkeypatch.setattr("src.agent.subgraph.web_search", lambda q, settings: "some content")
     with synthesize_agent.override(model=TestModel()):
         subgraph = build_researcher_subgraph(settings)
-        final = subgraph.invoke({
+        final = await subgraph.ainvoke({
             "sub_query": web_query,
             "raw_content": "",
             "sub_results": [],
