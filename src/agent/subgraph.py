@@ -33,7 +33,7 @@ def fetch_node(state: SubgraphState, settings: Settings) -> dict:
     return {"raw_content": raw}
 
 
-def synthesize_node(state: SubgraphState, settings: Settings) -> dict:
+async def synthesize_node(state: SubgraphState, settings: Settings) -> dict:
     """Synthesize raw content into a structured SubResult using synthesize_agent"""
     sub_query = state["sub_query"]
     raw_content = state["raw_content"]
@@ -41,7 +41,7 @@ def synthesize_node(state: SubgraphState, settings: Settings) -> dict:
     log.info("synthesize_node.start")
 
     prompt = build_synthesize_prompt(sub_query, raw_content)
-    result = synthesize_agent.run_sync(prompt, deps=settings)
+    result = await synthesize_agent.run(prompt, deps=settings)
     sub_result: SubResult = result.output
 
     log.info("synthesize_node.done", confidence=sub_result.confidence)
@@ -50,11 +50,24 @@ def synthesize_node(state: SubgraphState, settings: Settings) -> dict:
 
 
 def build_researcher_subgraph(settings: Settings):
-    """Build and compile the researcher subgraph."""
-    sg = StateGraph(SubgraphState) # type: ignore[arg-type]
+    """Build and compile the researcher subgraph.
 
-    sg.add_node("fetch", lambda state: fetch_node(state, settings))
-    sg.add_node("synthesize", lambda state: synthesize_node(state, settings))
+    Graph topology:
+        START -> fetch -> synthesize -> END
+
+    Named adapter functions bridge LangGraph's single-argument call convention
+    (state only) with our node convention (state + settings).
+    """
+    sg = StateGraph(SubgraphState)  # type: ignore[arg-type]
+
+    def fetch_adapter(state: SubgraphState) -> dict:
+        return fetch_node(state, settings)
+
+    async def synthesize_adapter(state: SubgraphState) -> dict:
+        return await synthesize_node(state, settings)
+
+    sg.add_node("fetch",      fetch_adapter)  # type: ignore[arg-type]
+    sg.add_node("synthesize", synthesize_adapter)  # type: ignore[arg-type]
 
     sg.add_edge(START, "fetch")
     sg.add_edge("fetch", "synthesize")
