@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import structlog
@@ -13,7 +14,7 @@ from src.agent.schemas import DossierOutput
 logger = structlog.get_logger()
 
 
-def run_once(
+async def run_once(
     query: str,
     settings: Settings,
     memory: BaseMemory,
@@ -39,14 +40,14 @@ def run_once(
     }
 
     logger.info("run_once.start", query=query, run_id=run_id, thread_id=thread_id)
-    final_state = graph.invoke(initial_state, config=config)
+    final_state = await graph.ainvoke(initial_state, config=config)
     logger.info("run_once.done", run_id=run_id)
 
     return final_state
 
 
-def run_cli(settings: Settings, memory: BaseMemory, graph) -> None:
-    """Interactive CLI entrypoint."""
+async def run_cli_async(settings: Settings, memory: BaseMemory, graph) -> None:
+    """Interactive CLI entrypoint (async)."""
 
     print("\n🔍 DeepDossier — Multi-Agent Research Pipeline\n")
 
@@ -58,7 +59,7 @@ def run_cli(settings: Settings, memory: BaseMemory, graph) -> None:
     print("\n⏳ Running research pipeline...\n")
 
     try:
-        final_state = run_once(query=query, settings=settings, memory=memory, graph=graph)
+        final_state = await run_once(query=query, settings=settings, memory=memory, graph=graph)
     except Exception as e:
         print(f"\n❌ Pipeline failed: {e}")
         raise
@@ -74,3 +75,11 @@ def run_cli(settings: Settings, memory: BaseMemory, graph) -> None:
     print(dossier.final_markdown)
     print("=" * 60)
     print(f"\n✅ Run complete. run_id={dossier.run_id}")
+
+
+def run_cli(settings: Settings, memory: BaseMemory, graph_cm) -> None:
+    """Sync shim so main.py stays a plain script."""
+    async def _run():
+        async with graph_cm as graph:
+            await run_cli_async(settings, memory, graph)
+    asyncio.run(_run())

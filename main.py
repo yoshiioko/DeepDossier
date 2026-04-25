@@ -1,6 +1,12 @@
 """DeepDossier CLI entrypoint."""
 
-import os
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    category=FutureWarning,
+    module=r"google\.generativeai|instructor",
+)
+
 from dotenv import load_dotenv
 
 load_dotenv()  # ensures GOOGLE_API_KEY is in os.environ for Pydantic AI
@@ -14,5 +20,4 @@ from src.agent.runner import run_cli
 if __name__ == "__main__":
     settings = Settings()
     memory = ChromaDBMemory(settings)
-    graph = build_supervisor_graph(settings, memory)
-    run_cli(settings, memory, graph)
+    run_cli(settings, memory, build_supervisor_graph(settings, memory))
