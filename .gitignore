@@ -192,6 +192,11 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 
+# DeepDossier — runtime data (never commit these)
+chroma_db/          # ChromaDB vector store — regenerated on first run
+graph_state.db      # LangGraph AsyncSqliteSaver checkpoint DB — local dev state only
+outputs/            # exported dossier .md/.json files
+
 # PyPI configuration file
 .pypirc
 
