@@ -32,7 +32,7 @@ async def planner_node(state: SupervisorState, settings: Settings, memory: BaseM
     log.info("planner_node.start")
 
     # 1. Query ChromaDB for already-known topics
-    known_chunks = await memory.retrieve(state["user_query"], n_results=5)
+    known_chunks = await memory.retrieve(state["user_query"], n_results=5, min_score=settings.memory_hit_confidence_threshold)
     known_topics = [c.metadata.get("topic", "") for c in known_chunks if c.metadata.get("topic")]
 
     if known_topics:
@@ -67,7 +67,10 @@ async def planner_node(state: SupervisorState, settings: Settings, memory: BaseM
     sub_queries = result.sub_queries[: settings.max_parallel_researchers]
     log.info("planner_node.done", num_sub_queries=len(sub_queries))
 
-    return {"sub_queries": sub_queries}
+    return {
+        "sub_queries": sub_queries,
+        "memory_context": [c.model_dump() for c in known_chunks],
+    }
 
 
 def dispatcher_node(state: SupervisorState, settings: Settings) -> list[Send]:
@@ -138,19 +141,35 @@ async def memory_writer_node(
     settings: Settings,
     memory: BaseMemory,
 ) -> dict:
-    """Persist approved research findings to ChromaDB."""
+    """Persist approved, high-confidence research findings to ChromaDB."""
     log = logger.bind(node_name="memory_writer_node", run_id=state.get("run_id", ""))
     log.info("memory_writer_node.start")
 
-    try:
-        await _write_memory(
-            sub_results=state.get("aggregated_results", []),
-            run_id=state.get("run_id", ""),
-            memory=memory,
-        )
-        log.info("memory_writer_node.done", num_chunks=len(state.get("aggregated_results", [])))
-    except Exception as e:
-        log.warning("memory_writer_node.failed", error=str(e))
+    all_results = state.get("aggregated_results", [])
+    threshold = settings.memory_write_confidence_threshold
+    to_write = [r for r in all_results if r.confidence >= threshold]
+    skipped = len(all_results) - len(to_write)
+
+    log.info(
+        "memory_writer_node.filtered",
+        total=len(all_results),
+        writing=len(to_write),
+        skipped=skipped,
+        threshold=threshold,
+    )
+
+    if to_write:
+        try:
+            await _write_memory(
+                sub_results=to_write,
+                run_id=state.get("run_id", ""),
+                memory=memory,
+            )
+            log.info("memory_writer_node.done", num_chunks=len(to_write))
+        except Exception as e:
+            log.warning("memory_writer_node.failed", error=str(e))
+    else:
+        log.info("memory_writer_node.nothing_to_write")
 
     return {}
 
@@ -163,17 +182,22 @@ async def compiler_node(
     log = logger.bind(node_name="compiler_node", run_id=state.get("run_id", ""))
     log.info("compiler_node.start")
 
+    memory_context: list[dict] = state.get("memory_context", [])  # ← pull from state
+
     prompt = build_compiler_prompt(
         query=state["user_query"],
         sub_results=state.get("aggregated_results", []),
+        memory_context=memory_context,                              # ← pass to prompt
     )
 
     result = await compiler_agent.run(prompt, deps=settings)
     dossier: DossierOutput = result.output
 
-    # Attach run_id — the LLM doesn't know it
-    dossier = dossier.model_copy(update={"run_id": state.get("run_id", "")})
+    dossier = dossier.model_copy(update={
+        "run_id": state.get("run_id", ""),
+        "memory_chunks_used": len(memory_context),                 # ← track how many cached chunks were used
+    })
 
-    log.info("compiler_node.done", title=dossier.title)
+    log.info("compiler_node.done", title=dossier.title, memory_chunks_used=len(memory_context))
 
     return {"dossier_output": dossier.model_dump()}
