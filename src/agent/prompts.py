@@ -32,10 +32,11 @@ into a concise, structured research finding.
 """
 
 
-def build_compiler_prompt(query: str, sub_results: list[SubResult]) -> str:
+def build_compiler_prompt(query: str, sub_results: list[SubResult], memory_context: list[dict] | None = None) -> str:
     """Build the prompt for compiler_agent.
 
-    The agent will synthesise all sub_results into a full DossierOutput.
+    When memory_context is non-empty, prepends a Cached Knowledge section
+    so the compiler integrates local memory with fresh research findings.
     """
     results_text = "\n\n".join(
         f"### Topic: {r.topic}\n"
@@ -45,25 +46,39 @@ def build_compiler_prompt(query: str, sub_results: list[SubResult]) -> str:
         for r in sub_results
     )
 
-    return f"""You are a professional research compiler. Your task is to synthesise the following
-research findings into a comprehensive, well-structured dossier.
+    memory_section = ""
+    if memory_context:
+        chunks_text = "\n\n".join(
+            f"[Cached — score: {c.get('score', 'n/a')}] "
+            f"Topic: {c.get('metadata', {}).get('topic', 'unknown')}\n"
+            f"{c.get('content', '')}"
+            for c in memory_context
+        )
+        memory_section = (
+            "\n\n## Cached Knowledge (from local memory — high confidence)\n"
+            "The following findings were retrieved from previous research sessions. "
+            "Integrate them with the fresh findings below — do not ignore them.\n\n"
+            f"{chunks_text}\n"
+        )
 
-## Original Research Query
-{query}
-
-## Research Findings
-{results_text}
-
-## Instructions
-- Write a compelling title for the dossier.
-- Write a 3–5 sentence executive summary covering the key conclusions.
-- Organise the findings into logical sections (DossierSection objects), each with a
-  heading, body, and sources list.
-- Compile all_sources as a deduplicated list of every URL across all findings.
-- List any limitations where confidence was low (< 0.5) or sources were absent.
-- Write final_markdown as a complete Markdown document rendering all sections.
-- Be honest about gaps — do not fabricate information.
-"""
+    return (
+        "You are a professional research compiler. Your task is to synthesise the following "
+        "research findings into a comprehensive, well-structured dossier.\n\n"
+        f"## Original Research Query\n{query}\n"
+        f"{memory_section}"
+        f"\n## Fresh Research Findings\n{results_text}\n\n"
+        "## Instructions\n"
+        "- Write a compelling title for the dossier.\n"
+        "- Write a 3–5 sentence executive summary covering the key conclusions.\n"
+        "- Organise the findings into logical sections (DossierSection objects), each with a "
+        "heading, body, and sources list.\n"
+        "- If cached knowledge is present, integrate it naturally — do not create a separate "
+        "'cached' section.\n"
+        "- Compile all_sources as a deduplicated list of every URL across all findings.\n"
+        "- List any limitations where confidence was low (< 0.5) or sources were absent.\n"
+        "- Write final_markdown as a complete Markdown document rendering all sections.\n"
+        "- Be honest about gaps — do not fabricate information.\n"
+    )
 
 
 def build_planner_prompt(query: str, known_topics: list[str], max_sub_queries: int = 5) -> str:
