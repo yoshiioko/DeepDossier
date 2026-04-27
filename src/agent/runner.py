@@ -54,7 +54,7 @@ async def run_with_approval(
 ) -> dict:
     """Resume a paused graph after human approval or rejection."""
     config = {"configurable": {"thread_id": thread_id}}
-    graph.update_state(config, {"human_approved": approved})
+    await graph.aupdate_state(config, {"human_approved": approved})
     final_state = await graph.ainvoke(None, config=config)
     return final_state
 
