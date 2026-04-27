@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     chroma_path: str = "./chroma_db"
     chroma_collection: str = "dossier_memory"
 
+    # Confidence thresholds - tune via .env
+    memory_hit_confidence_threshold: float = 0.7  # min cosine similarity to count as a memory hit
+    memory_write_confidence_threshold: float = 0.7  # min SubResult.confidence to upsert into ChromaDB
+
     # --- Parallelism ---
     max_parallel_researchers: int = 5
     rate_limit_per_minute: int = 10
