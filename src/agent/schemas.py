@@ -54,6 +54,7 @@ class MemoryChunk(BaseModel):
 
     content: str
     metadata: dict[str, str]   # keys: topic, source_url, timestamp, run_id
+    score: float | None = None  # cosine similarity from retrieval; None when writing
 
 
 # ──────────────────────────────────────────────
@@ -82,6 +83,7 @@ class DossierOutput(BaseModel):
     run_id: str
     token_usage: dict[str, int] = {}   # prompt_tokens, completion_tokens, total_tokens
     cost_usd: float | None = None
+    memory_chunks_used: int = 0  # how many cached chunks were injected into the compiler?
 
 
 # ──────────────────────────────────────────────
