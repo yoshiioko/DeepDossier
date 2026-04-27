@@ -19,7 +19,7 @@ class BaseMemory(Protocol):
     Callers (nodes) depend only on this interface — never on ChromaDBMemory directly.
     """
 
-    async def retrieve(self, query: str, n_results: int = 5) -> list[MemoryChunk]:
+    async def retrieve(self, query: str, n_results: int = 5, min_score: float = 0.0) -> list[MemoryChunk]:
         """Return the top-n semantically similar chunks for `query`."""
         ...
 
@@ -37,21 +37,37 @@ class ChromaDBMemory:
     def __init__(self, settings: Settings) -> None:
         self._client = chromadb.PersistentClient(path=settings.chroma_path)
         self._collection = self._client.get_or_create_collection(
-            name=settings.chroma_collection
+            name=settings.chroma_collection,
+            metadata={"hnsw:space": "cosine"},  # score = 1 - distance
         )
 
-    async def retrieve(self, query: str, n_results: int = 5) -> list[MemoryChunk]:
-        """Query ChromaDB for the top-n most similar chunks."""
-        results = await asyncio.to_thread(
-            self._collection.query,
-            query_texts=[query],
-            n_results=n_results,
-        )
+    async def retrieve(self, query: str, n_results: int = 5, min_score: float = 0.0) -> list[MemoryChunk]:
+        """Query ChromaDB; return only chunks with cosine similarity >= min_score."""
+
+        def _query():
+            return self._collection.query(
+                query_texts=[query],
+                n_results=n_results,
+                include=["documents", "metadatas", "distances"],  # ← request distances
+            )
+
+        raw = await asyncio.to_thread(_query)
+
         chunks: list[MemoryChunk] = []
-        documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
-        for doc, meta in zip(documents, metadatas):
-            chunks.append(MemoryChunk(content=doc, metadata=meta or {}))
+        documents = raw.get("documents", [[]])[0]
+        metadatas = raw.get("metadatas", [[]])[0]
+        distances = raw.get("distances", [[]])[0]  # ← new
+
+        for doc, meta, dist in zip(documents, metadatas, distances):
+            score = 1.0 - float(dist)  # ← cosine: 0=identical, 1=orthogonal
+            if score < min_score:  # ← filter below threshold
+                continue
+            chunks.append(MemoryChunk(
+                content=doc,
+                metadata={k: str(v) for k, v in (meta or {}).items()},
+                score=score,  # ← populate score field
+            ))
+
         return chunks
 
     async def write_chunks(self, chunks: list[MemoryChunk]) -> None:
