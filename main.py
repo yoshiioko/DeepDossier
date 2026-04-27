@@ -1,5 +1,8 @@
 """DeepDossier CLI entrypoint."""
 
+import logging
+logging.getLogger("langgraph").setLevel(logging.ERROR)
+
 import warnings
 warnings.filterwarnings(
     "ignore",
