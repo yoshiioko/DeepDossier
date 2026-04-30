@@ -1,9 +1,8 @@
 # DeepDossier
 
 A multi-agent research pipeline that decomposes complex queries into parallel sub-tasks,
-stores findings in a persistent ChromaDB vector store, and streams a structured dossier
-to the browser via SSE. Built with **LangGraph**, **Pydantic AI**, **FastAPI**, and
-**Google Gemini (`gemini-2.5-flash`)**.
+stores findings in a persistent ChromaDB vector store, and produces a structured dossier
+via a CLI runner. Built with **LangGraph**, **Pydantic AI**, and **Google Gemini (`gemini-2.5-flash`)**.
 
 ```
 START → planner_node → dispatcher_node → [ResearcherSubgraph × N] (parallel, Send API)
@@ -25,7 +24,6 @@ START → planner_node → dispatcher_node → [ResearcherSubgraph × N] (parall
 | [uv](https://docs.astral.sh/uv/getting-started/installation/) | latest |
 | Google API key | [Google AI Studio](https://aistudio.google.com/app/apikey) |
 | Tavily API key | [Tavily](https://app.tavily.com/) |
-| LangSmith API key | [LangSmith](https://smith.langchain.com/) |
 
 ---
 
@@ -51,12 +49,9 @@ Open `.env` and fill in your keys:
 ```env
 GOOGLE_API_KEY=your_google_api_key_here
 TAVILY_API_KEY=your_tavily_api_key_here
-LANGSMITH_API_KEY=your_langsmith_api_key_here
-LANGSMITH_PROJECT=deep-dossier
-LANGSMITH_TRACING=true
 ```
 
-### 4a. Run via CLI (with human-in-the-loop approval prompt)
+### 4. Run via CLI (with human-in-the-loop approval prompt)
 ```bash
 uv run python main.py
 ```
@@ -64,19 +59,6 @@ uv run python main.py
 You will be prompted to enter a research question. The planner decomposes it into
 sub-queries, researchers run in parallel, and you are asked to approve before findings
 are written to ChromaDB. A final structured dossier is printed to the terminal.
-
-### 4b. Run as an API server
-```bash
-uv run uvicorn src.agent.api:app --reload --port 8000
-```
-
-| Endpoint | Description |
-|----------|-------------|
-| `POST /research` | Start a new dossier run; returns `thread_id` |
-| `GET /stream/{thread_id}` | SSE stream of token-level progress events |
-| `POST /approve/{thread_id}` | Resume graph after human approval gate |
-| `GET /dossier/{thread_id}` | Fetch the final `DossierOutput` JSON |
-| `GET /health` | Health check |
 
 ---
 
@@ -103,29 +85,26 @@ uv run pytest -q -m integration
 
 ```
 src/agent/
-├── config.py           # Settings — API keys, model names, cost constants
+├── config.py           # Settings — API keys, model names, thresholds
 ├── state.py            # SupervisorState + SubgraphState
 ├── schemas.py          # Pydantic v2 models (PlannerOutput, SubResult, DossierOutput, …)
-├── tools.py            # web_search (Tavily), wikipedia_search, arxiv_search, calculator
+├── tools.py            # web_search (Tavily), wikipedia_search, arxiv_search
 ├── prompts.py          # Prompt builders for each node
 ├── memory.py           # BaseMemory protocol + ChromaDBMemory implementation
 ├── agents.py           # Pydantic AI singletons: synthesize_agent, compiler_agent
 ├── nodes.py            # All supervisor node functions
 ├── subgraph.py         # ResearcherSubgraph: fetch_node + synthesize_node
 ├── graph.py            # build_supervisor_graph() — wiring, interrupt, Send dispatch
-├── api.py              # FastAPI app with SSE streaming
-├── runner.py           # run_once(), run_cli(), run_stream()
-├── logging_utils.py    # structlog setup + LangSmith @traceable wrappers
-├── exporter.py         # Save DossierOutput to ./outputs/{run_id}.md + .json
-├── eval.py             # LangSmith evaluate() harness
+├── runner.py           # run_once(), run_cli_async(), run_cli()
 └── sanity.py           # ChromaDB round-trip smoke test (no LLM)
 tests/
-├── test_routing.py       # Supervisor routing + HITL interrupt/resume (TestModel)
-├── test_memory.py        # ChromaDB embed/retrieve round-trip (mocked)
-├── test_subgraph.py      # Researcher subgraph unit tests (TestModel)
-├── test_api.py           # FastAPI endpoint tests (httpx AsyncClient)
-└── test_graph_smoke.py   # Full graph smoke (@pytest.mark.integration)
-main.py                   # CLI entrypoint
+├── test_schemas.py     # Schema validation and model_validator assertions
+├── test_memory.py      # ChromaDB protocol with mock; min_score filtering
+├── test_subgraph.py    # Researcher subgraph unit tests (TestModel, zero API calls)
+├── test_nodes.py       # Supervisor node unit tests (TestModel, confidence gating)
+├── test_graph.py       # Graph routing + HITL interrupt/resume tests
+└── test_integration.py # Full graph run (@pytest.mark.integration)
+main.py                 # CLI entrypoint
 ```
 
 ---
@@ -140,10 +119,13 @@ main.py                   # CLI entrypoint
   `PlannerOutput` with automatic LLM self-correction on `ValidationError`. Pydantic AI
   handles `SubResult` and `DossierOutput`.
 - **Human-in-the-loop**: `interrupt()` is a node, not an edge condition. Resume via
-  `graph.update_state(config, {"human_approved": True})` then `graph.invoke(None, config)`.
-- **Persistence**: `SqliteSaver` (file-backed) keeps state across process restarts.
+  `graph.update_state(config, {"human_approved": True})` then `await graph.ainvoke(None, config)`.
+- **Persistence**: `AsyncSqliteSaver` keeps graph state across process restarts.
   Each independent dossier run is scoped by `thread_id`.
 - **Vector memory**: `BaseMemory` protocol in `memory.py` — swap `ChromaDBMemory` for
   `Mem0Memory` in one line without changing any callers.
 - **Tool routing**: `fetch_node` reads a `tool_hint` on each sub-query set by `planner_node`:
   `"web"` → Tavily, `"wiki"` → Wikipedia, `"paper"` → ArXiv.
+- **Confidence-gated memory**: only `SubResult` entries with `confidence ≥ 0.7` are written
+  to ChromaDB; retrieved chunks with cosine similarity ≥ 0.7 are injected into the compiler
+  prompt as RAG context.

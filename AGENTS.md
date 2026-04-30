@@ -36,7 +36,6 @@ User Query → planner_node → dispatcher_node → [ResearcherSubgraph × N] (p
 
 ```bash
 uv sync                                          # install all deps (runtime + dev)
-uv run pre-commit install                        # install hooks (once after clone)
 
 uv run python -m src.agent.sanity                # Phase 1: ChromaDB round-trip smoke test
 uv run python -m src.agent.phase2_sanity         # Phase 2: subgraph + tools smoke test
@@ -49,7 +48,6 @@ uv run pytest -q -m integration                 # integration tests (costs credi
 
 uv run ruff check src tests && uv run ruff format src tests
 uv run mypy src                                  # strict mode
-docker compose up --build                        # containerised run (Phase 7)
 ```
 
 ## Critical Conventions
@@ -66,7 +64,6 @@ docker compose up --build                        # containerised run (Phase 7)
 - **Tool routing**: `fetch_node` selects tool via `tool_hint` on sub-query: `"web"` → Tavily, `"wiki"` → Wikipedia, `"paper"` → ArXiv.
 - **Pydantic AI agents**: defined as module-level singletons in `agents.py`; called via `await agent.run(prompt, deps=settings)` from within async node functions. In tests, `TestModel` replaces the real model — no monkey-patching. Full subgraph tests use `await subgraph.ainvoke()`.
 - **Memory hit logging**: `planner_node` emits `planner_node.memory_hit` (with `known_topics`) or `planner_node.memory_miss` on every run so ChromaDB cache usage is visible in structured logs.
-- **SSE events**: always use typed `EventPayload` Pydantic model — never raw dicts.
 - **Logging**: `structlog` throughout; bind `run_id` + `node_name` to every log event; JSON in prod, coloured in dev.
 - **Test markers**: `@pytest.mark.integration` for real API/DB tests; unit tests using `TestModel` need no markers.
 
@@ -77,9 +74,6 @@ Copy `.env.example` → `.env`. Required keys:
 ```env
 GOOGLE_API_KEY=...          # Gemini (both Instructor/google.generativeai and Pydantic AI paths)
 TAVILY_API_KEY=...
-LANGSMITH_API_KEY=...
-LANGSMITH_PROJECT=deep-dossier
-LANGSMITH_TRACING=true
 ```
 
 Notable optional overrides: `PLANNER_MODEL_NAME=gemini-2.5-pro` (stronger model for planning), `CHROMA_PATH=./chroma_db`, `MAX_PARALLEL_RESEARCHERS=5`.

@@ -81,31 +81,8 @@ class DossierOutput(BaseModel):
     limitations: list[str] = []
     final_markdown: str
     run_id: str
-    token_usage: dict[str, int] = {}   # prompt_tokens, completion_tokens, total_tokens
-    cost_usd: float | None = None
     memory_chunks_used: int = 0  # how many cached chunks were injected into the compiler?
 
-
-# ──────────────────────────────────────────────
-# API / SSE
-# ──────────────────────────────────────────────
-
-class EventPayload(BaseModel):
-    """Typed SSE event — always use this; never raw dicts over SSE."""
-    model_config = ConfigDict(extra="forbid")
-
-    event: str    # "status" | "result" | "error" | "interrupt"
-    data: dict
-    run_id: str
-
-
-class HumanReviewPayload(BaseModel):
-    """Payload emitted at the HITL interrupt point."""
-    model_config = ConfigDict(extra="forbid")
-
-    preview_markdown: str
-    sub_results: list[SubResult]
-    pending_run_id: str
 
 
 

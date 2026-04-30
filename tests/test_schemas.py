@@ -8,8 +8,6 @@ from pydantic import ValidationError
 from src.agent.schemas import (
     DossierOutput,
     DossierSection,
-    EventPayload,
-    HumanReviewPayload,
     PlannerOutput,
     SubQuery,
     SubResult,
@@ -91,19 +89,3 @@ def test_dossier_output_round_trips() -> None:
     restored = DossierOutput(**original.model_dump())
     assert restored.run_id == original.run_id
 
-
-# ── EventPayload & HumanReviewPayload ─────────────────────────────────────────
-
-def test_event_payload_rejects_extra_fields() -> None:
-    with pytest.raises(ValidationError):
-        EventPayload(event="status", data={}, run_id="r1", extra="bad")  # type: ignore[call-arg]
-
-
-def test_human_review_payload_rejects_extra_fields() -> None:
-    with pytest.raises(ValidationError):
-        HumanReviewPayload(
-            preview_markdown="md",
-            sub_results=[],
-            pending_run_id="r",
-            sneak="x",  # type: ignore[call-arg]
-        )
